@@ -1,4 +1,4 @@
-repgroup,repnum,wt,MuscularStrength.lower,MuscularStrength.middle,MuscularStrength.upper,sedentary,current smoker,five drinks weekly,diabetes millitus,hypertension,hyercholeserolaemia,family cardiovascular,deceased
+repgroup,repnum,wt,MuscularStrength.lower,MuscularStrength.middle,MuscularStrength.upper,sedentary,current smoker,five drinks weekly,diabetes millitus,hypertension,hyercholesterolaemia,family cardiovascular,deceased
 0,0,876.5,0,0,1,0,0,0,0,0,0,0,0
 0,1,876.5,0,0,1,0,0,0,0,0,0,0,0
 0,2,876.5,0,0,1,0,0,0,0,0,0,0,0

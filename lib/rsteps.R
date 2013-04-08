@@ -17,7 +17,7 @@ sapply(subset(dg,MuscularStrength.upper==1),sum)
 
 # show fits 
 print(summary(lm(deceased~0+MuscularStrength.lower+MuscularStrength.middle+MuscularStrength.upper,data=dg)))
-print(summary(lm(deceased~0+MuscularStrength.lower+MuscularStrength.middle+MuscularStrength.upper+sedentary+current.smoker+five.drinks.weekly+diabetes.millitus+ hypertension+hyercholeserolaemia +family.cardiovascular,data=dg)))
+print(summary(lm(deceased~0+MuscularStrength.lower+MuscularStrength.middle+MuscularStrength.upper+sedentary+current.smoker+five.drinks.weekly+diabetes.millitus+ hypertension+hyercholesterolaemia +family.cardiovascular,data=dg)))
 
 # show number of individuals in weighted version
 dim(subset(dg,repnum==0))[[1]]
@@ -29,14 +29,14 @@ for(g in unique(d2$repgroup)) {
    di = subset(d2,repgroup==g)
    print(paste('start group',g))
    print(summary(lm(deceased~0+MuscularStrength.lower+MuscularStrength.middle+MuscularStrength.upper,data=di)))
-   print(summary(lm(deceased~0+MuscularStrength.lower+MuscularStrength.middle+MuscularStrength.upper+sedentary+current.smoker+five.drinks.weekly+diabetes.millitus+ hypertension+hyercholeserolaemia +family.cardiovascular,data=di)))
+   print(summary(lm(deceased~0+MuscularStrength.lower+MuscularStrength.middle+MuscularStrength.upper+sedentary+current.smoker+five.drinks.weekly+diabetes.millitus+ hypertension+hyercholesterolaemia +family.cardiovascular,data=di)))
   print(paste('end group',g))
 }
 
 
 # confirm 2-ways all match
 vars = c('sedentary', 'current.smoker', 'five.drinks.weekly',
-  'diabetes.millitus', 'hypertension', 'hyercholeserolaemia',
+  'diabetes.millitus', 'hypertension', 'hyercholesterolaemia',
   'family.cardiovascular')
 v = vars[5]
 for(g in unique(d2$repgroup)) {
@@ -50,3 +50,14 @@ for(v in vars) {
   f = as.formula(paste('deceased~0+MuscularStrength.lower+MuscularStrength.middle+MuscularStrength.upper',v,sep=' + '))
   print(summary(lm(f,data=di)))
 }
+
+
+# get a displayable sample
+
+dSample = subset(d2,repgroup==0 & repnum==0,select=c("wt", 
+  "MuscularStrength.lower",
+  "MuscularStrength.middle","MuscularStrength.upper", "sedentary",
+  "current.smoker", "five.drinks.weekly",
+  "diabetes.millitus","hypertension", "hyercholesterolaemia",
+  "family.cardiovascular", "deceased"))
+write.table(dSample,'sample.csv',quote=F,row.names=F,sep=',')
