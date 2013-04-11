@@ -42,16 +42,17 @@ public class ExperimentInspector {
 		final SortedMap<Integer,String> levelIndices = new TreeMap<Integer,String>();
 		final SortedMap<String,Integer> checkableConditions = new TreeMap<String,Integer>();
 		for(final BurstMap row: origSource) {
+			final int ri = rows.size();
 			final String cond = row.getAsString(CONDITIONCOL);
 			final int dotIndex = cond.indexOf('.');
 			if(dotIndex>0) {
 				final String group = cond.substring(0,dotIndex);
-				levelIndices.put(rows.size(),group);
+				levelIndices.put(ri,group);
 			}
 			//final double positives = row.getAsDouble(OUTCOMECOL);
 			//final double total = row.getAsDouble(TOTALCOL);
 			if(row.getAsString(cond)!=null) {
-				checkableConditions.put(cond,rows.size());
+				checkableConditions.put(cond,ri);
 			}
 			//System.out.println("" + cond + "\t" + positives + "\t" + total);
 			rows.add(row);
@@ -62,18 +63,20 @@ public class ExperimentInspector {
 		// compute total
 		final String firstGroup = levelIndices.get(levelIndices.firstKey());
 		int totalCount = 0;
+		int posCount = 0;
 		for(final Entry<Integer, String> me: levelIndices.entrySet()) {
 			if(firstGroup.equals(me.getValue())) {
 				totalCount += rows.get(me.getKey()).getAsDouble(TOTALCOL);
+				posCount += rows.get(me.getKey()).getAsDouble(OUTCOMECOL);
 			}
 		}
 		// build the vectors
-		final int dim = rows.size() + 1;
+		final int vdim = rows.size() + 1; // one for each feature plus one for outcome
 		final ArrayList<BitSet> vecs = new ArrayList<BitSet>();
-		final BitSet b = new BitSet(dim+1);
+		final BitSet b = new BitSet(vdim);
 		while(true) {
 			// find right most zero index
-			int pos = dim-1;
+			int pos = vdim-1;
 			while((pos>=0)&&(b.get(pos))) {
 				b.set(pos,false);
 				--pos;
@@ -108,7 +111,7 @@ public class ExperimentInspector {
 		//System.out.println("possible data rows: " + nWts);
 		// build the linear relations on data weights
 		final int nChecks = 2 + checkableConditions.size();
-		final boolean collarCounts = false;
+		final boolean collarCounts = true;
 		final int nSums = nChecks*rows.size();
 		final int nRows = nSums + (collarCounts?nWts:0);
 		final int nVars = nWts + (collarCounts?nWts:0);
@@ -139,7 +142,7 @@ public class ExperimentInspector {
 					// own total
 					relnMat.set(nChecks*i,j,1.0);
 					// own times outcome total
-					if(v.get(dim-1)) {
+					if(v.get(vdim-1)) {
 						relnMat.set(nChecks*i+1,j,1.0);
 					}
 					// checkable conditions totals
@@ -161,10 +164,19 @@ public class ExperimentInspector {
 		for(int j=0;j<vecs.size();++j) {
 			final BitSet v = vecs.get(j);
 			for(int i=0;i<rows.size();++i) {
-				if(v.get(i)) {
-					expectation[j] += Math.log(1.0+rows.get(i).getAsDouble(TOTALCOL));
+				final double ti;
+				final double ci;
+				if(!v.get(rows.size())) {
+					ci = rows.get(i).getAsDouble(TOTALCOL);
+					ti = totalCount;
 				} else {
-					expectation[j] += Math.log(1.0+totalCount-rows.get(i).getAsDouble(TOTALCOL));
+					ci = rows.get(i).getAsDouble(OUTCOMECOL);
+					ti = posCount;
+				}
+				if(v.get(i)) {
+					expectation[j] += Math.log((1.0+ci)/(1.0+ti));
+				} else {
+					expectation[j] += Math.log((1.0+ti-ci)/(1.0+ti));
 				}
 			}
 		}
@@ -174,7 +186,7 @@ public class ExperimentInspector {
 			for(int i=0;i<nWts;++i) {
 				relnMat.set(nSums+i,i,1.0);
 				relnMat.set(nSums+i,i+nWts,-1.0); // slack
-				rhs[nSums+i] = 0.5*expectation[i] - nDevs*(1+Math.sqrt(expectation[i])) - 10.0; // not tight enough to reliably set without user intervention
+				rhs[nSums+i] = 0.75*expectation[i] - nDevs*(1+Math.sqrt(expectation[i])) - 10.0; // not tight enough to reliably set without user intervention
 				// above is evidence (assuming no bug) that independence is not plausible for our data summaries
 			}
 		}
@@ -208,7 +220,7 @@ public class ExperimentInspector {
 						final BitSet vec = vecs.get(i);
 						for(int repnum=0;repnum<intRowWt;++repnum) {
 							System.out.print(repGroup + "," + repnum + "," + wi + "," + expectation[i]);
-							for(int j=0;j<dim;++j) {
+							for(int j=0;j<vdim;++j) {
 								System.out.print("," + (vec.get(j)?"1":"0"));
 							}
 							System.out.println();
