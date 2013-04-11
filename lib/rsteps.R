@@ -1,9 +1,9 @@
 
 # read summaries
-d <- read.table('muscleData.csv',header=T,sep=',')
+d = read.table('muscleData.csv',header=T,sep=',')
 
 # read synthetic data
-d2 <- read.table('syntheticData.csv',header=T,sep=',')
+d2 = read.table('syntheticData.csv',header=T,sep=',')
 
 
 # checks (with about 2 everywhere, had fractional weights)

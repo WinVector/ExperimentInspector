@@ -4,7 +4,9 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Random;
+import java.util.SortedMap;
 import java.util.TreeMap;
 
 import com.winvector.linalg.DenseVec;
@@ -37,8 +39,8 @@ public class ExperimentInspector {
 		final URI trainURI = new URI(args[0]);
 		final Iterable<BurstMap> origSource = new TrivialReader(trainURI,',',null,false,null,false);
 		final ArrayList<BurstMap> rows = new ArrayList<BurstMap>();
-		final Map<Integer,String> levelIndices = new TreeMap<Integer,String>();
-		final Map<String,Integer> checkableConditions = new TreeMap<String,Integer>();
+		final SortedMap<Integer,String> levelIndices = new TreeMap<Integer,String>();
+		final SortedMap<String,Integer> checkableConditions = new TreeMap<String,Integer>();
 		for(final BurstMap row: origSource) {
 			final String cond = row.getAsString(CONDITIONCOL);
 			final int dotIndex = cond.indexOf('.');
@@ -56,6 +58,14 @@ public class ExperimentInspector {
 		}
 		if(levelIndices.isEmpty()) {
 			throw new Exception("expecting at least one level group (to carry total)");
+		}
+		// compute total
+		final String firstGroup = levelIndices.get(levelIndices.firstKey());
+		int totalCount = 0;
+		for(final Entry<Integer, String> me: levelIndices.entrySet()) {
+			if(firstGroup.equals(me.getValue())) {
+				totalCount += rows.get(me.getKey()).getAsDouble(TOTALCOL);
+			}
 		}
 		// build the vectors
 		final int dim = rows.size() + 1;
@@ -98,8 +108,12 @@ public class ExperimentInspector {
 		//System.out.println("possible data rows: " + nWts);
 		// build the linear relations on data weights
 		final int nChecks = 2 + checkableConditions.size();
-		final ColtMatrix relnMat = ColtMatrix.factory.newMatrix(nChecks*rows.size(),nWts,true);
-		final double[] rhs = new double[nChecks*rows.size()];
+		final boolean collarCounts = false;
+		final int nSums = nChecks*rows.size();
+		final int nRows = nSums + (collarCounts?nWts:0);
+		final int nVars = nWts + (collarCounts?nWts:0);
+		final ColtMatrix relnMat = ColtMatrix.factory.newMatrix(nRows,nVars,true);
+		final double[] rhs = new double[nRows];
 		for(int i=0;i<rows.size();++i) {
 			final BurstMap row = rows.get(i);
 			//final String cond = row.getAsString(CONDITIONCOL);
@@ -142,10 +156,32 @@ public class ExperimentInspector {
 				}
 			}
 		}
+		// estimate expected independent counts (smoothed)
+		final double[] expectation = new double[vecs.size()]; 
+		for(int j=0;j<vecs.size();++j) {
+			final BitSet v = vecs.get(j);
+			for(int i=0;i<rows.size();++i) {
+				if(v.get(i)) {
+					expectation[j] += Math.log(1.0+rows.get(i).getAsDouble(TOTALCOL));
+				} else {
+					expectation[j] += Math.log(1.0+totalCount-rows.get(i).getAsDouble(TOTALCOL));
+				}
+			}
+		}
+		expNormalize(expectation,totalCount);
+		if(collarCounts) {
+			final double nDevs = 3.0;
+			for(int i=0;i<nWts;++i) {
+				relnMat.set(nSums+i,i,1.0);
+				relnMat.set(nSums+i,i+nWts,-1.0); // slack
+				rhs[nSums+i] = 0.5*expectation[i] - nDevs*(1+Math.sqrt(expectation[i])) - 10.0; // not tight enough to reliably set without user intervention
+				// above is evidence (assuming no bug) that independence is not plausible for our data summaries
+			}
+		}
 		// solve the LP to get the weights
 		final Random rand = new Random(2524326L);
-		final double[] c = new double[nWts];
-		System.out.print("repgroup,repnum,wt");
+		final double[] c = new double[nVars];
+		System.out.print("repgroup,repnum,wt,expectation");
 		for(int i=0;i<rows.size();++i) {
 			final BurstMap row = rows.get(i);
 			final String cond = row.getAsString(CONDITIONCOL);
@@ -165,19 +201,38 @@ public class ExperimentInspector {
 			final int nnz = soln.primalSolution.nIndices();
 			for(int ii=0;ii<nnz;++ii) {
 				final int i = soln.primalSolution.index(ii);
-				final double wi = soln.primalSolution.value(ii);
-				final int intRowWt = (int)Math.round(wi);
-				if(intRowWt>0) {
-					final BitSet vec = vecs.get(i);
-					for(int repnum=0;repnum<intRowWt;++repnum) {
-						System.out.print(repGroup + "," + repnum + "," + wi);
-						for(int j=0;j<dim;++j) {
-							System.out.print("," + (vec.get(j)?"1":"0"));
+				if(i<nWts) {
+					final double wi = soln.primalSolution.value(ii);
+					final int intRowWt = (int)Math.round(wi);
+					if(intRowWt>0) {
+						final BitSet vec = vecs.get(i);
+						for(int repnum=0;repnum<intRowWt;++repnum) {
+							System.out.print(repGroup + "," + repnum + "," + wi + "," + expectation[i]);
+							for(int j=0;j<dim;++j) {
+								System.out.print("," + (vec.get(j)?"1":"0"));
+							}
+							System.out.println();
 						}
-						System.out.println();
 					}
 				}
 			}
+		}
+	}
+
+	private static void expNormalize(final double[] logExpectation, final double totalCount) {
+		double max = Double.NEGATIVE_INFINITY;
+		for(final double li: logExpectation) {
+			max = Math.max(max,li);
+		}
+		double observed = 0.0;
+		for(int i=0;i<logExpectation.length;++i) {
+			final double ci = Math.exp(logExpectation[i]-max);
+			logExpectation[i] = ci;
+			observed += ci;
+		}
+		final double scale = totalCount/observed;
+		for(int i=0;i<logExpectation.length;++i) {
+			logExpectation[i] *= scale;
 		}
 	}
 
